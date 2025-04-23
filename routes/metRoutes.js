@@ -1,4 +1,4 @@
-// routes/metRoutes.js - API routes for Met Museum data
+// routes/metRoutes.js - Updated Met Museum API routes with comprehensive categories
 const express = require('express');
 const router = express.Router();
 const MetService = require('../services/metService');
@@ -6,10 +6,10 @@ const parseMetUrl = require('../utils/metUrlParser');
 
 const metService = new MetService();
 
-// Get categories from Met API
+// Get categories from Met API (departments)
 router.get('/categories', async (req, res) => {
   try {
-    // Hard-coded categories based on Met Museum departments
+    // Complete list of Met Museum departments with IDs
     const categories = [
       { id: 1, name: 'American Decorative Arts' },
       { id: 3, name: 'Ancient Near Eastern Art' },
@@ -29,7 +29,8 @@ router.get('/categories', async (req, res) => {
       { id: 17, name: 'Medieval Art' },
       { id: 18, name: 'Musical Instruments' },
       { id: 19, name: 'Photographs' },
-      { id: 21, name: 'Modern Art' }
+      { id: 21, name: 'Modern and Contemporary Art' },
+      { id: 22, name: 'American Paintings and Sculpture' }
     ];
     
     res.json(categories);
@@ -41,7 +42,7 @@ router.get('/categories', async (req, res) => {
 // Get artwork types
 router.get('/artwork-types', async (req, res) => {
   try {
-    // Hard-coded artwork types based on Met classifications
+    // Comprehensive list of artwork types based on Met classifications
     const artworkTypes = [
       'Paintings',
       'Drawings',
@@ -57,7 +58,9 @@ router.get('/artwork-types', async (req, res) => {
       'Books',
       'Manuscripts',
       'Musical Instruments',
-      'Arms and Armor'
+      'Arms and Armor',
+      'Costumes',
+      'Decorative Arts'
     ];
     
     res.json(artworkTypes);
@@ -69,9 +72,10 @@ router.get('/artwork-types', async (req, res) => {
 // Get time periods
 router.get('/time-periods', async (req, res) => {
   try {
-    // Hard-coded time periods
+    // Comprehensive list of time periods used by the Met
     const timePeriods = [
-      'Prehistoric / Ancient',
+      'Prehistoric (before 3000 BC)',
+      'Ancient (3000 BC–AD 500)',
       'Classical Antiquity',
       'Medieval (500–1400)',
       'Renaissance (1400–1600)',
@@ -145,6 +149,18 @@ router.post('/categorize', async (req, res) => {
     // Combine collections
     const allCollections = [...eraCollections, ...themeCollections];
     
+    // Add department information
+    let departmentName = "";
+    if (artwork.department) {
+      departmentName = artwork.department;
+      if (!allCollections.includes(departmentName)) {
+        allCollections.push(departmentName);
+      }
+      if (!tags.includes(departmentName)) {
+        tags.push(departmentName);
+      }
+    }
+    
     res.json({
       objectId,
       title: artwork.title,
@@ -153,6 +169,7 @@ router.post('/categorize', async (req, res) => {
       imageUrl: artwork.primaryImage,
       classification: artwork.classification,
       medium: artwork.medium,
+      department: departmentName,
       collections: allCollections,
       tags,
       year
