@@ -1,5 +1,5 @@
-// models/Job.js - MongoDB model for import jobs
-const mongoose = require('mongoose')
+// models/Job.js - Updated MongoDB model for import jobs
+const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
   name: {
@@ -9,15 +9,7 @@ const JobSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: [
-      'pending',
-      'initializing',
-      'initialized',
-      'processing',
-      'paused',
-      'completed',
-      'failed'
-    ],
+    enum: ['pending', 'initialized', 'processing', 'paused', 'completed', 'failed'],
     default: 'pending'
   },
   source: {
@@ -28,15 +20,31 @@ const JobSchema = new mongoose.Schema({
   query: {
     // For URL source
     url: String,
-    // For category source
-    artworkTypes: [String],
-    timePeriods: [String],
-    keywords: String,
+    
     // Common query parameters
     departmentIds: [Number],
     hasImages: { type: Boolean, default: true },
     isOnView: { type: Boolean, default: false },
-    isHighlight: { type: Boolean, default: false }
+    isHighlight: { type: Boolean, default: false },
+    isPublicDomain: { type: Boolean, default: true },
+    
+    // For category source
+    artworkTypes: [String],
+    timePeriods: [String],
+    keywords: String,
+    
+    // Date range
+    dateBegin: Number,
+    dateEnd: Number,
+    
+    // Additional filters
+    filters: {
+      era: String,
+      geolocation: String,
+      material: String,
+      classification: String,
+      additionalKeywords: [String]
+    }
   },
   options: {
     maxItems: { type: Number, default: 100 },
@@ -54,21 +62,19 @@ const JobSchema = new mongoose.Schema({
   processedIds: [Number],
   failedIds: [Number],
   totalObjects: { type: Number, default: 0 },
-  results: [
-    {
-      objectId: Number,
-      title: String,
-      artist: String,
-      date: String,
-      imageUrl: String,
-      shopifyProductId: String,
-      collections: [String],
-      tags: [String],
-      description: String,
-      processed: { type: Boolean, default: false },
-      error: String
-    }
-  ],
+  results: [{
+    objectId: Number,
+    title: String,
+    artist: String,
+    date: String,
+    imageUrl: String,
+    shopifyProductId: String,
+    collections: [String],
+    tags: [String],
+    description: String,
+    processed: { type: Boolean, default: false },
+    error: String
+  }],
   pauseReason: {
     type: String,
     enum: ['user', 'rate_limit', 'error', null],
@@ -79,37 +85,37 @@ const JobSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   completedAt: Date
-})
+});
 
 // Update the updatedAt field on save
-JobSchema.pre('save', function (next) {
-  this.updatedAt = Date.now()
-  next()
-})
+JobSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
+  next();
+});
 
 // Method to calculate job progress
-JobSchema.methods.calculateProgress = function () {
-  if (this.totalObjects === 0) return 0
-  return Math.round((this.processedIds.length / this.totalObjects) * 100)
-}
+JobSchema.methods.calculateProgress = function() {
+  if (this.totalObjects === 0) return 0;
+  return Math.round((this.processedIds.length / this.totalObjects) * 100);
+};
 
 // Method to update job status
-JobSchema.methods.updateStatus = function (status, reason = null) {
-  this.status = status
-
+JobSchema.methods.updateStatus = function(status, reason = null) {
+  this.status = status;
+  
   if (status === 'paused') {
-    this.pauseReason = reason
+    this.pauseReason = reason;
     if (reason === 'rate_limit') {
       // Default resume after 60 seconds for rate limit
-      this.resumeAfter = new Date(Date.now() + 60000)
+      this.resumeAfter = new Date(Date.now() + 60000);
     }
   }
-
+  
   if (status === 'completed') {
-    this.completedAt = new Date()
+    this.completedAt = new Date();
   }
+  
+  return this.save();
+};
 
-  return this.save()
-}
-
-module.exports = mongoose.model('Job', JobSchema)
+module.exports = mongoose.model('Job', JobSchema);
