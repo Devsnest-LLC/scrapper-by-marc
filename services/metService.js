@@ -35,36 +35,50 @@ class MetService {
     return this.rateLimits.checkMetApiLimit();
   }
   
-  async searchObjects(query) {
-    try {
-       console.log('SEARCH QUERY RECEIVED:', JSON.stringify(query, null, 2));
-      await this.checkRateLimits();
-      
-     // Simplify search parameters - focus on essential filters only
-const searchParams = {
-  hasImages: true,
-  isPublicDomain: true // Always ensure open access
-};
-
-// Add date parameters if available
-if (query.dateBegin) {
-  searchParams.dateBegin = query.dateBegin;
-  console.log(`Adding date range: ${query.dateBegin} to ${query.dateEnd || 'present'}`);
+ async searchObjects(query) {
+  try {
+    await this.checkRateLimits();
+    
+    console.log('Starting search with query:', JSON.stringify(query));
+    
+    // Very simple search parameters - just search for open access items
+    const searchParams = {
+      hasImages: true,
+      isPublicDomain: true
+    };
+    
+    // Add basic date range if available
+    if (query.dateBegin) {
+      searchParams.dateBegin = query.dateBegin;
+    }
+    
+    if (query.dateEnd) {
+      searchParams.dateEnd = query.dateEnd;
+    }
+    
+    // Use a simple search term
+    searchParams.q = "*";
+    
+    console.log('Using simplified search params:', searchParams);
+    
+    // Add timeout to API call to prevent hanging
+    const response = await axios.get(`${this.baseUrl}/search`, { 
+      params: searchParams,
+      timeout: 10000 // 10 second timeout
+    });
+    
+    const objectIds = response.data.objectIDs || [];
+    console.log(`Search returned ${objectIds.length} results`);
+    
+    // Return results without additional filtering for now
+    return objectIds;
+    
+  } catch (error) {
+    console.error('Error in searchObjects:', error.message);
+    // Return empty array to prevent hanging
+    return [];
+  }
 }
-
-if (query.dateEnd) {
-  searchParams.dateEnd = query.dateEnd;
-}
-
-// Keep it simple, just search for "*" to get all matching items
-searchParams.q = "*";
-
-console.log('SIMPLIFIED SEARCH PARAMS FOR API:', JSON.stringify(searchParams, null, 2));
-      
-      // Always ensure open access (public domain) if specified
-      if (query.isPublicDomain) {
-        searchParams.isPublicDomain = true;
-      }
       
       // Execute the API search
       console.log('SEARCH PARAMS SENT TO API:', JSON.stringify(searchParams, null, 2));
