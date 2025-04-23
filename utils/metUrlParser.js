@@ -106,7 +106,7 @@ function parseMetUrl(url) {
       query.filters.additionalKeywords.push(geolocation.toLowerCase());
       
       // Special handling for common locations
-      if (geolocation.toLowerCase() === 'united states' || geolocation.toLowerCase() === 'america') {
+      if (geolocation.toLowerCase() === 'united states' || geolocation.toLowerCase().includes('america')) {
         query.filters.additionalKeywords.push('american', 'usa', 'u.s.a');
       }
     }
