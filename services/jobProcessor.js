@@ -94,121 +94,120 @@ class JobProcessor {
     return jobs.length > 0 ? jobs[0] : null;
   }
   
- async initializeJob(job) {
-  try {
-    console.log(`Initializing job ${job._id}: ${job.name}`);
-    // Use 'processing' instead of 'initializing' to avoid enum validation error
-    job.status = 'processing'; 
-    await job.save();
-    
-    let objectIds = [];
-    
-    // Get object IDs based on job source
-    if (job.source === 'url') {
-      // Use the URL source
-      console.log(`Processing URL job with query:`, job.query);
-      objectIds = await this.metService.searchObjects(job.query);
-    } else if (job.source === 'category') {
-      // Use the category source
-      console.log(`Processing category job with:`, {
-        artworkTypes: job.query.artworkTypes,
-        timePeriods: job.query.timePeriods,
-        keywords: job.query.keywords
-      });
+  async initializeJob(job) {
+    try {
+      console.log(`Initializing job ${job._id}: ${job.name}`);
+      // Use 'processing' instead of 'initializing' to avoid enum validation error
+      job.status = 'processing'; 
+      await job.save();
       
-      // Build query from category selections
-      const query = {
-        hasImages: true,
-        departmentIds: job.query.departmentIds || [],
-        keywords: job.query.keywords || '',
-        isPublicDomain: job.query.isPublicDomain !== undefined ? job.query.isPublicDomain : true,
-        filters: {
-          additionalKeywords: []
-        }
-      };
+      let objectIds = [];
       
-      // Add time period date ranges if selected
-      if (job.query.timePeriods && job.query.timePeriods.length > 0) {
-        // Map time periods to date ranges and keywords
-        job.query.timePeriods.forEach(period => {
-          const periodLower = period.toLowerCase();
-          
-          // Add period as a keyword
-          query.filters.additionalKeywords.push(periodLower);
-          
-          // Map to date ranges based on period names
-          if (periodLower.includes('1900-present') || periodLower.includes('20th century')) {
-            query.dateBegin = 1900;
-          } else if (periodLower.includes('19th century') || periodLower.includes('1800')) {
-            query.dateBegin = 1800;
-            query.dateEnd = 1899;
-          } else if (periodLower.includes('baroque') || periodLower.includes('rococo') || 
-                    periodLower.includes('1600-1750')) {
-            query.dateBegin = 1600;
-            query.dateEnd = 1750;
-          } else if (periodLower.includes('renaissance') || periodLower.includes('1400-1600')) {
-            query.dateBegin = 1400;
-            query.dateEnd = 1600;
-          } else if (periodLower.includes('medieval') || periodLower.includes('500-1400')) {
-            query.dateBegin = 500;
-            query.dateEnd = 1400;
-          }
+      // Get object IDs based on job source
+      if (job.source === 'url') {
+        console.log(`Processing URL job with query:`, job.query);
+        objectIds = await this.metService.searchObjects(job.query);
+      } else if (job.source === 'category') {
+        // Use the category source
+        console.log(`Processing category job with:`, {
+          artworkTypes: job.query.artworkTypes,
+          timePeriods: job.query.timePeriods,
+          keywords: job.query.keywords
         });
-      }
-      
-      // Set classification filter if artwork types are selected
-      if (job.query.artworkTypes && job.query.artworkTypes.length > 0) {
-        query.filters.classification = job.query.artworkTypes[0]; // Use first selected type as primary filter
         
-        // Add all types as keywords
-        job.query.artworkTypes.forEach(type => {
-          query.filters.additionalKeywords.push(type.toLowerCase());
+        // Build query from category selections
+        const query = {
+          hasImages: true,
+          departmentIds: job.query.departmentIds || [],
+          keywords: job.query.keywords || '',
+          isPublicDomain: job.query.isPublicDomain !== undefined ? job.query.isPublicDomain : true,
+          filters: {
+            additionalKeywords: []
+          }
+        };
+        
+        // Add time period date ranges if selected
+        if (job.query.timePeriods && job.query.timePeriods.length > 0) {
+          // Map time periods to date ranges and keywords
+          job.query.timePeriods.forEach(period => {
+            const periodLower = period.toLowerCase();
+            
+            // Add period as a keyword
+            query.filters.additionalKeywords.push(periodLower);
+            
+            // Map to date ranges based on period names
+            if (periodLower.includes('1900-present') || periodLower.includes('20th century')) {
+              query.dateBegin = 1900;
+            } else if (periodLower.includes('19th century') || periodLower.includes('1800')) {
+              query.dateBegin = 1800;
+              query.dateEnd = 1899;
+            } else if (periodLower.includes('baroque') || periodLower.includes('rococo') || 
+                      periodLower.includes('1600-1750')) {
+              query.dateBegin = 1600;
+              query.dateEnd = 1750;
+            } else if (periodLower.includes('renaissance') || periodLower.includes('1400-1600')) {
+              query.dateBegin = 1400;
+              query.dateEnd = 1600;
+            } else if (periodLower.includes('medieval') || periodLower.includes('500-1400')) {
+              query.dateBegin = 500;
+              query.dateEnd = 1400;
+            }
+          });
+        }
+        
+        // Set classification filter if artwork types are selected
+        if (job.query.artworkTypes && job.query.artworkTypes.length > 0) {
+          query.filters.classification = job.query.artworkTypes[0]; // Use first selected type as primary filter
+          
+          // Add all types as keywords
+          job.query.artworkTypes.forEach(type => {
+            query.filters.additionalKeywords.push(type.toLowerCase());
+          });
+        }
+        
+        // Get object IDs with the constructed query
+        objectIds = await this.metService.searchObjects(query);
+        
+        // Further filter by artwork types if needed
+        if (job.query.artworkTypes && job.query.artworkTypes.length > 1) {
+          objectIds = await this.metService.filterForArtTypes(objectIds, job.query.artworkTypes);
+        }
+      }
+      
+      // Add fallback if no results found
+      if (objectIds.length === 0) {
+        console.warn(`No objects found for job ${job._id}. Using fallback search.`);
+        // Try a more basic search
+        objectIds = await this.metService.searchObjects({
+          hasImages: true,
+          isPublicDomain: true,
+          q: '*'
         });
+        
+        if (objectIds.length > 0) {
+          console.log(`Fallback search found ${objectIds.length} objects`);
+        }
       }
       
-      // Get object IDs with the constructed query
-      objectIds = await this.metService.searchObjects(query);
-      
-      // Further filter by artwork types if needed
-      if (job.query.artworkTypes && job.query.artworkTypes.length > 1) {
-        objectIds = await this.metService.filterForArtTypes(objectIds, job.query.artworkTypes);
+      // Limit the number of objects if maxItems is set
+      if (job.options.maxItems && job.options.maxItems > 0 && objectIds.length > job.options.maxItems) {
+        objectIds = objectIds.slice(0, job.options.maxItems);
       }
-    }
-    
-    // Add fallback if no results found
-    if (objectIds.length === 0) {
-      console.warn(`No objects found for job ${job._id}. Using fallback search.`);
-      // Try a more basic search
-      objectIds = await this.metService.searchObjects({
-        hasImages: true,
-        isPublicDomain: true,
-        q: '*'
-      });
       
-      if (objectIds.length > 0) {
-        console.log(`Fallback search found ${objectIds.length} objects`);
-      }
+      // Update the job with the object IDs
+      job.objectIds = objectIds;
+      job.totalObjects = objectIds.length;
+      job.status = 'initialized';
+      await job.save();
+      
+      console.log(`Job ${job._id} initialized with ${objectIds.length} objects`);
+    } catch (error) {
+      console.error(`Error initializing job ${job._id}:`, error);
+      job.status = 'failed';
+      job.error = error.message;
+      await job.save();
     }
-    
-    // Limit the number of objects if maxItems is set
-    if (job.options.maxItems && job.options.maxItems > 0 && objectIds.length > job.options.maxItems) {
-      objectIds = objectIds.slice(0, job.options.maxItems);
-    }
-    
-    // Update the job with the object IDs
-    job.objectIds = objectIds;
-    job.totalObjects = objectIds.length;
-    job.status = 'initialized';
-    await job.save();
-    
-    console.log(`Job ${job._id} initialized with ${objectIds.length} objects`);
-  } catch (error) {
-    console.error(`Error initializing job ${job._id}:`, error);
-    job.status = 'failed';
-    job.error = error.message;
-    await job.save();
   }
-}
   
   async processJob(job) {
     try {
