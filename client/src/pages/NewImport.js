@@ -22,15 +22,18 @@ const NewImport = () => {
   // URL form state
   const [url, setUrl] = useState('');
   const [urlName, setUrlName] = useState('');
+  const [urlOpenAccessOnly, setUrlOpenAccessOnly] = useState(true);
   
   // Category form state
-  const [categories, setCategories] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [artworkTypes, setArtworkTypes] = useState([]);
   const [timePeriods, setTimePeriods] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedArtTypes, setSelectedArtTypes] = useState([]);
   const [selectedTimePeriods, setSelectedTimePeriods] = useState([]);
   const [keywords, setKeywords] = useState('');
   const [categoryName, setCategoryName] = useState('');
+  const [categoryOpenAccessOnly, setCategoryOpenAccessOnly] = useState(true);
   
   // Advanced options
   const [maxItems, setMaxItems] = useState(100);
@@ -56,7 +59,7 @@ const NewImport = () => {
         axios.get('/api/met/time-periods')
       ]);
       
-      setCategories(categoriesRes.data);
+      setDepartments(categoriesRes.data);
       setArtworkTypes(typesRes.data);
       setTimePeriods(periodsRes.data);
     } catch (err) {
@@ -78,9 +81,16 @@ const NewImport = () => {
       setLoading(true);
       setError('');
       
+      // Add openAccess parameter to URL if checkbox is checked
+      let processedUrl = url;
+      if (urlOpenAccessOnly && !url.includes('showOnly=openAccess')) {
+        const separator = url.includes('?') ? '&' : '?';
+        processedUrl = `${url}${separator}showOnly=openAccess`;
+      }
+      
       // Create job from URL
       const jobData = {
-        url,
+        url: processedUrl,
         name: urlName || `URL Import: ${new Date().toLocaleString()}`,
         options: {
           maxItems,
@@ -110,8 +120,9 @@ const NewImport = () => {
   const handleCategorySubmit = async (e) => {
     e.preventDefault();
     
-    if (selectedArtTypes.length === 0 && selectedTimePeriods.length === 0 && !keywords) {
-      setError('Please select at least one category, time period, or enter keywords');
+    if (selectedDepartments.length === 0 && selectedArtTypes.length === 0 && 
+        selectedTimePeriods.length === 0 && !keywords) {
+      setError('Please select at least one department, category, time period, or enter keywords');
       return;
     }
     
@@ -124,7 +135,9 @@ const NewImport = () => {
         name: categoryName || `Category Import: ${new Date().toLocaleString()}`,
         artworkTypes: selectedArtTypes,
         timePeriods: selectedTimePeriods,
+        departmentIds: selectedDepartments.map(dept => parseInt(dept)),
         keywords,
+        isPublicDomain: categoryOpenAccessOnly,
         options: {
           maxItems,
           skipShopifyUpload,
@@ -169,6 +182,16 @@ const NewImport = () => {
     );
   };
   
+  // Handle department selection
+  const handleDepartmentChange = (e) => {
+    const value = e.target.value;
+    setSelectedDepartments(prev => 
+      prev.includes(value)
+        ? prev.filter(dept => dept !== value)
+        : [...prev, value]
+    );
+  };
+  
   if (loading) {
     return <LoadingSpinner text="Creating import job..." />;
   }
@@ -202,6 +225,19 @@ const NewImport = () => {
                   />
                   <Form.Text className="text-muted">
                     Paste a URL from the Met Museum search results page
+                  </Form.Text>
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
+                  <Form.Check
+                    type="checkbox"
+                    id="url-open-access-only"
+                    label="Ensure Open Access Only (public domain artwork)"
+                    checked={urlOpenAccessOnly}
+                    onChange={(e) => setUrlOpenAccessOnly(e.target.checked)}
+                  />
+                  <Form.Text className="text-muted">
+                    This will ensure only public domain artwork is imported, even if not specified in the URL
                   </Form.Text>
                 </Form.Group>
                 
@@ -277,8 +313,28 @@ const NewImport = () => {
                 <Row>
                   <Col md={6}>
                     <Form.Group className="mb-3">
+                      <Form.Label>Department</Form.Label>
+                      <div className="mb-3 border p-3 rounded" style={{maxHeight: '200px', overflowY: 'auto'}}>
+                        {departments.map(dept => (
+                          <Form.Check
+                            key={`dept-${dept.id}`}
+                            type="checkbox"
+                            id={`department-${dept.id}`}
+                            label={dept.name}
+                            value={dept.id}
+                            checked={selectedDepartments.includes(dept.id.toString())}
+                            onChange={handleDepartmentChange}
+                            className="mb-1"
+                          />
+                        ))}
+                      </div>
+                    </Form.Group>
+                  </Col>
+                  
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
                       <Form.Label>Artwork Type</Form.Label>
-                      <div className="mb-3">
+                      <div className="mb-3 border p-3 rounded" style={{maxHeight: '200px', overflowY: 'auto'}}>
                         {artworkTypes.map(type => (
                           <Form.Check
                             key={type}
@@ -294,11 +350,13 @@ const NewImport = () => {
                       </div>
                     </Form.Group>
                   </Col>
-                  
+                </Row>
+                
+                <Row>
                   <Col md={6}>
                     <Form.Group className="mb-3">
                       <Form.Label>Time Period</Form.Label>
-                      <div className="mb-3">
+                      <div className="mb-3 border p-3 rounded" style={{maxHeight: '200px', overflowY: 'auto'}}>
                         {timePeriods.map(period => (
                           <Form.Check
                             key={period}
@@ -314,20 +372,35 @@ const NewImport = () => {
                       </div>
                     </Form.Group>
                   </Col>
+                  
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Keyword Search</Form.Label>
+                      <Form.Control
+                        type="text"
+                        placeholder="e.g. landscape, portrait, nature"
+                        value={keywords}
+                        onChange={(e) => setKeywords(e.target.value)}
+                      />
+                      <Form.Text className="text-muted">
+                        Enter keywords separated by commas
+                      </Form.Text>
+                    </Form.Group>
+                    
+                    <Form.Group className="mb-3">
+                      <Form.Check
+                        type="checkbox"
+                        id="category-open-access-only"
+                        label="Open Access Only (public domain artwork)"
+                        checked={categoryOpenAccessOnly}
+                        onChange={(e) => setCategoryOpenAccessOnly(e.target.checked)}
+                      />
+                      <Form.Text className="text-muted">
+                        Only import artworks that are in the public domain
+                      </Form.Text>
+                    </Form.Group>
+                  </Col>
                 </Row>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Keyword Search</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="e.g. landscape, portrait, nature"
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                  />
-                  <Form.Text className="text-muted">
-                    Enter keywords separated by commas
-                  </Form.Text>
-                </Form.Group>
                 
                 <Form.Group className="mb-3">
                   <Form.Label>Job Name (Optional)</Form.Label>
