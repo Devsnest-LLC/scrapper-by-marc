@@ -1,4 +1,4 @@
-// services/jobProcessor.js - Background processor for import jobs
+// services/jobProcessor.js - Updated background processor for import jobs
 const Job = require('../models/Job');
 const MetService = require('./metService');
 
@@ -97,7 +97,7 @@ class JobProcessor {
   async initializeJob(job) {
     try {
       console.log(`Initializing job ${job._id}: ${job.name}`);
-      job.status = 'initialized';
+      job.status = 'initializing';
       await job.save();
       
       let objectIds = [];
@@ -105,19 +105,70 @@ class JobProcessor {
       // Get object IDs based on job source
       if (job.source === 'url') {
         // Use the URL source
+        console.log(`Processing URL job with query:`, job.query);
         objectIds = await this.metService.searchObjects(job.query);
       } else if (job.source === 'category') {
         // Use the category source
+        console.log(`Processing category job with:`, {
+          artworkTypes: job.query.artworkTypes,
+          timePeriods: job.query.timePeriods,
+          keywords: job.query.keywords
+        });
+        
+        // Build query from category selections
         const query = {
           hasImages: true,
-          departmentIds: job.query.departmentIds,
-          keywords: job.query.keywords
+          departmentIds: job.query.departmentIds || [],
+          keywords: job.query.keywords || '',
+          filters: {
+            additionalKeywords: []
+          }
         };
         
+        // Add time period date ranges if selected
+        if (job.query.timePeriods && job.query.timePeriods.length > 0) {
+          // Map time periods to date ranges and keywords
+          job.query.timePeriods.forEach(period => {
+            const periodLower = period.toLowerCase();
+            
+            // Add period as a keyword
+            query.filters.additionalKeywords.push(periodLower);
+            
+            // Map to date ranges based on period names
+            if (periodLower.includes('1900-present') || periodLower.includes('20th century')) {
+              query.dateBegin = 1900;
+            } else if (periodLower.includes('19th century') || periodLower.includes('1800')) {
+              query.dateBegin = 1800;
+              query.dateEnd = 1899;
+            } else if (periodLower.includes('baroque') || periodLower.includes('rococo') || 
+                      periodLower.includes('1600-1750')) {
+              query.dateBegin = 1600;
+              query.dateEnd = 1750;
+            } else if (periodLower.includes('renaissance') || periodLower.includes('1400-1600')) {
+              query.dateBegin = 1400;
+              query.dateEnd = 1600;
+            } else if (periodLower.includes('medieval') || periodLower.includes('500-1400')) {
+              query.dateBegin = 500;
+              query.dateEnd = 1400;
+            }
+          });
+        }
+        
+        // Set classification filter if artwork types are selected
+        if (job.query.artworkTypes && job.query.artworkTypes.length > 0) {
+          query.filters.classification = job.query.artworkTypes[0]; // Use first selected type as primary filter
+          
+          // Add all types as keywords
+          job.query.artworkTypes.forEach(type => {
+            query.filters.additionalKeywords.push(type.toLowerCase());
+          });
+        }
+        
+        // Get object IDs with the constructed query
         objectIds = await this.metService.searchObjects(query);
         
-        // Filter by artwork types if specified
-        if (job.query.artworkTypes && job.query.artworkTypes.length > 0) {
+        // Further filter by artwork types if needed
+        if (job.query.artworkTypes && job.query.artworkTypes.length > 1) {
           objectIds = await this.metService.filterForArtTypes(objectIds, job.query.artworkTypes);
         }
       }
