@@ -1,4 +1,4 @@
-// services/metService.js - Service for interacting with the Met Museum API
+// services/metService.js - Updated to support multiple descriptions
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -15,7 +15,7 @@ class MetService {
     this.openai = new OpenAIService();
     this.shopify = new ShopifyService();
     this.rateLimits = new RateLimitManager();
-    this.outputDir = path.join(__dirname, '../data/images');
+    this.outputDir = path.join(__dirname, '../../data/images');
     
     // Ensure output directory exists
     this.ensureOutputDir();
@@ -39,28 +39,237 @@ class MetService {
     try {
       await this.checkRateLimits();
       
+      // Prepare search parameters for the Met API
       const searchParams = {
         hasImages: query.hasImages !== undefined ? query.hasImages : true,
         isOnView: query.isOnView || false,
         isHighlight: query.isHighlight || false
       };
       
+      // Add department IDs filter if available
       if (query.departmentIds && query.departmentIds.length > 0) {
         searchParams.departmentIds = query.departmentIds.join('|');
       }
       
+      // Add date range filters if available
+      if (query.dateBegin) {
+        searchParams.dateBegin = query.dateBegin;
+      }
+      
+      if (query.dateEnd) {
+        searchParams.dateEnd = query.dateEnd;
+      }
+      
+      // Add keywords for search query
       if (query.keywords) {
         searchParams.q = query.keywords;
       } else {
         searchParams.q = '*';
       }
       
+      // Public domain filter (open access)
+      if (query.isPublicDomain) {
+        searchParams.isPublicDomain = true;
+      }
+      
+      // Execute the API search
+      console.log('Searching Met API with params:', searchParams);
       const response = await axios.get(`${this.baseUrl}/search`, { params: searchParams });
-      return response.data.objectIDs || [];
+      
+      // If we have additional filters, we'll need to post-process the results
+      const objectIds = response.data.objectIDs || [];
+      console.log(`Found ${objectIds.length} initial results from Met API`);
+      
+      // If we have additional filters that aren't directly supported by the API,
+      // we'll need to apply them to the results
+      if (query.filters && (
+          query.filters.classification || 
+          query.filters.geolocation || 
+          query.filters.material)) {
+        
+        // Apply post-filtering (this will get object details and filter based on criteria)
+        return this.postFilterResults(objectIds, query.filters);
+      }
+      
+      return objectIds;
     } catch (error) {
       this.handleApiError(error, 'searching objects');
       return [];
     }
+  }
+  
+  // New method to apply additional filters to search results
+  async postFilterResults(objectIds, filters) {
+    console.log(`Post-filtering ${objectIds.length} results with additional criteria`);
+    
+    // Limit initial batch size to avoid overwhelming the API
+    const batchSize = 20;
+    const initialBatch = objectIds.slice(0, batchSize);
+    const filteredIds = [];
+    
+    for (const objectId of initialBatch) {
+      try {
+        await this.checkRateLimits();
+        
+        // Get object details
+        const objectDetails = await this.getObjectDetails(objectId);
+        
+        // Skip if object not found or not public domain
+        if (!objectDetails || !objectDetails.isPublicDomain || !objectDetails.primaryImage) {
+          continue;
+        }
+        
+        let matchesFilters = true;
+        
+        // Check classification filter
+        if (filters.classification && objectDetails.classification) {
+          // Case-insensitive check if classification contains the filter
+          const classificationMatch = objectDetails.classification.toLowerCase()
+            .includes(filters.classification.toLowerCase());
+          
+          if (!classificationMatch) {
+            matchesFilters = false;
+          }
+        }
+        
+        // Check geolocation filter
+        if (matchesFilters && filters.geolocation && 
+            (objectDetails.culture || objectDetails.country || objectDetails.region || objectDetails.subregion)) {
+          
+          const geolocationLower = filters.geolocation.toLowerCase();
+          const cultureLower = (objectDetails.culture || '').toLowerCase();
+          const countryLower = (objectDetails.country || '').toLowerCase();
+          const regionLower = (objectDetails.region || '').toLowerCase();
+          const subregionLower = (objectDetails.subregion || '').toLowerCase();
+          
+          const geolocationMatch = 
+            cultureLower.includes(geolocationLower) ||
+            countryLower.includes(geolocationLower) ||
+            regionLower.includes(geolocationLower) ||
+            subregionLower.includes(geolocationLower) ||
+            geolocationLower.includes(cultureLower) ||
+            geolocationLower.includes(countryLower);
+          
+          if (!geolocationMatch) {
+            matchesFilters = false;
+          }
+        }
+        
+        // Check material filter
+        if (matchesFilters && filters.material && objectDetails.medium) {
+          const materialLower = filters.material.toLowerCase();
+          const mediumLower = objectDetails.medium.toLowerCase();
+          
+          // Special case for "Paintings" material
+          if (materialLower === 'paintings') {
+            if (!(objectDetails.classification === 'Paintings' || 
+                 mediumLower.includes('oil') || 
+                 mediumLower.includes('acrylic') || 
+                 mediumLower.includes('tempera') ||
+                 mediumLower.includes('paint'))) {
+              matchesFilters = false;
+            }
+          } else if (!mediumLower.includes(materialLower)) {
+            matchesFilters = false;
+          }
+        }
+        
+        // If the object passes all filters, add it to the filtered list
+        if (matchesFilters) {
+          filteredIds.push(objectId);
+        }
+      } catch (error) {
+        console.error(`Error filtering object ${objectId}:`, error.message);
+      }
+    }
+    
+    console.log(`Post-filtering complete. Found ${filteredIds.length} matching results from initial batch of ${initialBatch.length}`);
+    
+    // If we have a good proportion of matches, process more results
+    // Otherwise return what we have from the initial batch
+    if (filteredIds.length > 0 && 
+        filteredIds.length / initialBatch.length > 0.3 && 
+        objectIds.length > batchSize) {
+      
+      // Get more results if initial filtering was successful
+      const remainingIds = objectIds.slice(batchSize);
+      const maxAdditional = Math.min(remainingIds.length, 80); // Limit to 100 total results (20 + 80)
+      
+      console.log(`Getting ${maxAdditional} more results based on initial match rate...`);
+      
+      for (let i = 0; i < maxAdditional; i++) {
+        try {
+          await this.checkRateLimits();
+          
+          const objectId = remainingIds[i];
+          const objectDetails = await this.getObjectDetails(objectId);
+          
+          // Skip if object not found or not public domain
+          if (!objectDetails || !objectDetails.isPublicDomain || !objectDetails.primaryImage) {
+            continue;
+          }
+          
+          let matchesFilters = true;
+          
+          // Apply the same filters as before
+          if (filters.classification && objectDetails.classification) {
+            const classificationMatch = objectDetails.classification.toLowerCase()
+              .includes(filters.classification.toLowerCase());
+            
+            if (!classificationMatch) {
+              matchesFilters = false;
+            }
+          }
+          
+          if (matchesFilters && filters.geolocation && 
+              (objectDetails.culture || objectDetails.country || objectDetails.region)) {
+            
+            const geolocationLower = filters.geolocation.toLowerCase();
+            const cultureLower = (objectDetails.culture || '').toLowerCase();
+            const countryLower = (objectDetails.country || '').toLowerCase();
+            const regionLower = (objectDetails.region || '').toLowerCase();
+            
+            const geolocationMatch = 
+              cultureLower.includes(geolocationLower) ||
+              countryLower.includes(geolocationLower) ||
+              regionLower.includes(geolocationLower) ||
+              geolocationLower.includes(cultureLower) ||
+              geolocationLower.includes(countryLower);
+            
+            if (!geolocationMatch) {
+              matchesFilters = false;
+            }
+          }
+          
+          if (matchesFilters && filters.material && objectDetails.medium) {
+            const materialLower = filters.material.toLowerCase();
+            const mediumLower = objectDetails.medium.toLowerCase();
+            
+            if (materialLower === 'paintings') {
+              if (!(objectDetails.classification === 'Paintings' || 
+                   mediumLower.includes('oil') || 
+                   mediumLower.includes('acrylic') || 
+                   mediumLower.includes('tempera') ||
+                   mediumLower.includes('paint'))) {
+                matchesFilters = false;
+              }
+            } else if (!mediumLower.includes(materialLower)) {
+              matchesFilters = false;
+            }
+          }
+          
+          if (matchesFilters) {
+            filteredIds.push(objectId);
+          }
+        } catch (error) {
+          console.error(`Error filtering additional object:`, error.message);
+        }
+      }
+      
+      console.log(`Additional filtering complete. Found total of ${filteredIds.length} matching results`);
+    }
+    
+    return filteredIds;
   }
   
   async getObjectDetails(objectId) {
@@ -127,7 +336,8 @@ class MetService {
       'Enlightenment': { start: 1750, end: 1799 },
       '19th Century': { start: 1800, end: 1899 },
       'Early 20th Century': { start: 1900, end: 1945 },
-      'Mid to Late 20th Century': { start: 1946, end: 1999 }
+      'Mid to Late 20th Century': { start: 1946, end: 1999 },
+      'Contemporary': { start: 2000, end: new Date().getFullYear() }
     };
     
     if (!isNaN(year)) {
@@ -185,7 +395,12 @@ class MetService {
       'Technology & Innovation': ['technology', 'innovation', 'invention', 'machine', 'engineering', 'progress', 'modern'],
       'Machines': ['machine', 'mechanical', 'engine', 'device', 'apparatus', 'mechanism', 'technological'],
       'Transportation': ['transportation', 'vehicle', 'ship', 'boat', 'train', 'carriage', 'automobile', 'travel'],
-      'Industrial Scenes': ['industrial', 'factory', 'industry', 'manufacturing', 'production', 'labor', 'worker']
+      'Industrial Scenes': ['industrial', 'factory', 'industry', 'manufacturing', 'production', 'labor', 'worker'],
+      // New collections for geographical regions
+      'American Art': ['america', 'american', 'united states', 'usa', 'u.s.', 'new york', 'california'],
+      'European Art': ['europe', 'european', 'france', 'french', 'italy', 'italian', 'british', 'england', 'english', 'spain', 'spanish'],
+      'Asian Art': ['asia', 'asian', 'china', 'chinese', 'japan', 'japanese', 'india', 'indian', 'korea', 'korean'],
+      'African Art': ['africa', 'african', 'egypt', 'egyptian']
     };
     
     // Check for thematic collections
@@ -207,9 +422,29 @@ class MetService {
       tags.push(artwork.classification);
     }
     
-    // Add culture/origin info as tags
+    // Add culture/origin info as tags and collections
     if (artwork.culture) {
       tags.push(artwork.culture);
+      // Add as a collection if it's a significant culture
+      if (artwork.culture.toLowerCase().includes('american') || 
+          artwork.culture.toLowerCase().includes('british') ||
+          artwork.culture.toLowerCase().includes('french') ||
+          artwork.culture.toLowerCase().includes('italian') ||
+          artwork.culture.toLowerCase().includes('chinese') ||
+          artwork.culture.toLowerCase().includes('japanese')) {
+        collections.push(`${artwork.culture} Art`);
+      }
+    }
+    
+    // Add department as a collection if available
+    if (artwork.department && !collections.includes(artwork.department)) {
+      collections.push(artwork.department);
+      tags.push(artwork.department);
+    }
+    
+    // Add country/region as tags if available
+    if (artwork.country) {
+      tags.push(artwork.country);
     }
     
     return { collections, tags };
@@ -236,8 +471,9 @@ class MetService {
         return null;
       }
       
-      // Generate description
-      const description = await this.openai.generateDescription(artwork);
+      // Generate descriptions
+      const { rawDescription, shortDescription, expandedDescription } = 
+        await this.openai.generateDescriptions(artwork);
       
       // Determine the year
       const year = parseInt(artwork.objectBeginDate);
@@ -258,7 +494,9 @@ class MetService {
         artist: artwork.artistDisplayName || 'Unknown Artist',
         date: artwork.objectDate || 'Unknown',
         imageUrl: artwork.primaryImage,
-        description,
+        rawDescription,
+        shortDescription,
+        expandedDescription,
         collections: allCollections,
         tags,
         year
@@ -269,7 +507,8 @@ class MetService {
         try {
           const productId = await this.shopify.uploadArtwork(
             artwork,
-            description,
+            shortDescription,
+            expandedDescription,
             imagePath,
             allCollections,
             tags,
@@ -311,9 +550,7 @@ class MetService {
       // The request was made but no response was received
       console.error(`No response received while ${action}: ${error.message}`);
     } else {
-      // Something happened in setting up the request that triggered an Error
-      console.error(`Error setting up request while ${action}: ${error.message}`);
+      console.error(`Error with OpenAI request: ${error.message}`);
     }
   }
 }
-module.exports = MetService;
