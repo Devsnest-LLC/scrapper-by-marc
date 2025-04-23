@@ -554,3 +554,4 @@ class MetService {
     }
   }
 }
+module.exports = MetService;
