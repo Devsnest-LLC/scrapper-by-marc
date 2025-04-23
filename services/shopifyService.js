@@ -1,4 +1,4 @@
-// services/shopifyService.js - Service for uploading to Shopify
+// services/shopifyService.js - Updated to support multiple descriptions
 const Shopify = require('shopify-api-node');
 const fs = require('fs');
 const RateLimitManager = require('./rateLimitManager');
@@ -29,7 +29,7 @@ class ShopifyService {
     return this.rateLimits.checkShopifyLimit();
   }
   
-  async uploadArtwork(artwork, description, imagePath, collections, tags, price = 99.99) {
+  async uploadArtwork(artwork, shortDescription, expandedDescription, imagePath, collections, tags, price = 99.99) {
     if (!this.isConfigured) {
       throw new Error('Shopify API is not configured');
     }
@@ -44,10 +44,10 @@ class ShopifyService {
       const imageData = fs.readFileSync(imagePath);
       const base64Image = Buffer.from(imageData).toString('base64');
       
-      // Create the product
+      // Create the product with the short description as the main description
       const product = {
         title: artwork.title,
-        body_html: description,
+        body_html: shortDescription,
         vendor: artwork.artistDisplayName || 'Unknown Artist',
         product_type: artwork.classification || 'Artwork',
         tags: tags.join(', '),
@@ -70,6 +70,7 @@ class ShopifyService {
           }
         ],
         metafields: [
+          // Regular metafields
           {
             key: 'year',
             value: artwork.objectDate || 'Unknown',
@@ -85,6 +86,19 @@ class ShopifyService {
           {
             key: 'object_id',
             value: artwork.objectID.toString(),
+            namespace: 'art',
+            value_type: 'string'
+          },
+          // New metafields for our additional descriptions
+          {
+            key: 'raw_description',
+            value: artwork.objectDescription || artwork.creditLine || '',
+            namespace: 'art',
+            value_type: 'string'
+          },
+          {
+            key: 'expanded_description',
+            value: expandedDescription,
             namespace: 'art',
             value_type: 'string'
           }
