@@ -69,6 +69,11 @@ console.log('SIMPLIFIED SEARCH PARAMS FOR API:', JSON.stringify(searchParams, nu
       // Execute the API search
       console.log('SEARCH PARAMS SENT TO API:', JSON.stringify(searchParams, null, 2));
       const response = await axios.get(`${this.baseUrl}/search`, { params: searchParams });
+     
+      // Add this logging to see raw API response
+console.log(`API RESPONSE STATUS: ${response.status}`);
+console.log(`API RESPONSE TOTAL OBJECTS: ${response.data.total || 0}`);
+console.log(`API RESPONSE OBJECT IDs COUNT: ${(response.data.objectIDs || []).length}`);
       
       // Get results
       const objectIds = response.data.objectIDs || [];
