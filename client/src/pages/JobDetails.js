@@ -1,3 +1,4 @@
+// client/src/pages/JobDetails.js - Updated with image download button
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
@@ -18,7 +19,8 @@ import {
   FaPlay,
   FaPause,
   FaStop,
-  FaArrowLeft
+  FaArrowLeft,
+  FaImages
 } from 'react-icons/fa';
 import axios from 'axios';
 import moment from 'moment';
@@ -30,6 +32,7 @@ const JobDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+  const [imageDownloading, setImageDownloading] = useState(false); // Track image download state
   
   useEffect(() => {
     fetchJobDetails();
@@ -104,6 +107,28 @@ const JobDetails = () => {
     } catch (err) {
       setError('Failed to start Shopify upload. Please try again.');
       console.error('Error starting Shopify upload:', err);
+    }
+  };
+  
+  // Handle download images
+  const handleDownloadImages = () => {
+    setImageDownloading(true);
+    try {
+      // Create a download link and trigger it
+      const link = document.createElement('a');
+      link.href = `/api/jobs/${id}/images`;
+      link.download = `images-${id}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      setError('Failed to download images. Please try again.');
+      console.error('Error downloading images:', err);
+    } finally {
+      // Set a timeout to reset the downloading state after a reasonable time
+      setTimeout(() => {
+        setImageDownloading(false);
+      }, 3000);
     }
   };
   
@@ -227,6 +252,16 @@ const JobDetails = () => {
                     <FaDownload className="me-1" /> Download CSV
                   </Button>
                 </a>
+                
+                <Button
+                  variant="info"
+                  onClick={handleDownloadImages}
+                  disabled={imageDownloading}
+                  className="ms-2"
+                >
+                  <FaImages className="me-1" /> 
+                  {imageDownloading ? 'Preparing Images...' : 'Download All Images'}
+                </Button>
                 
                 {job.options.skipShopifyUpload && (
                   <Button variant="success" onClick={handleUploadToShopify} className="ms-2">
