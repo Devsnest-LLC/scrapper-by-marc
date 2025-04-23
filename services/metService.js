@@ -1,4 +1,4 @@
-// services/metService.js - Updated to support multiple descriptions
+// services/metService.js - Updated service for interacting with the Met Museum API
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -35,210 +35,116 @@ class MetService {
     return this.rateLimits.checkMetApiLimit();
   }
   
-async searchObjects(query) {
-  try {
-    await this.checkRateLimits();
-    
-    // Prepare search parameters for the Met API
-    const searchParams = {
-      hasImages: true
-    };
-    
-    // Always ensure open access (public domain) if specified
-    if (query.isPublicDomain) {
-      searchParams.isPublicDomain = true;
-    }
-    
-    // Add department IDs filter if available
-    if (query.departmentIds && query.departmentIds.length > 0) {
-      searchParams.departmentIds = query.departmentIds.join('|');
-    }
-    
-    // Add date range filters if available
-    if (query.dateBegin) {
-      searchParams.dateBegin = query.dateBegin;
-    }
-    
-    if (query.dateEnd) {
-      searchParams.dateEnd = query.dateEnd;
-    }
-    
-    // Add keywords for search query
-    if (query.keywords) {
-      searchParams.q = query.keywords;
-    } else {
-      searchParams.q = '*';
-    }
-    
-    // Execute the API search
-    console.log('SEARCH PARAMS SENT TO API:', JSON.stringify(searchParams, null, 2));
-    const response = await axios.get(`${this.baseUrl}/search`, { params: searchParams });
-    
-    // Get results
-    const objectIds = response.data.objectIDs || [];
-    console.log(`Found ${objectIds.length} initial results from Met API`);
-    
-    // If we have additional filters that aren't directly supported by the API,
-    // we'll need to apply them to the results
-    if (objectIds.length > 0 && query.filters && (
-        query.filters.classification || 
-        query.filters.geolocation || 
-        query.filters.material)) {
-      
-      return this.postFilterResults(objectIds, query.filters);
-    }
-    
-    return objectIds;
-  } catch (error) {
-    this.handleApiError(error, 'searching objects');
-    return [];
-  }
-}
-  
-  // New method to apply additional filters to search results
- async postFilterResults(objectIds, filters) {
-  console.log(`Post-filtering ${objectIds.length} results with filters:`, filters);
-  
-  // Limit initial batch size to avoid overwhelming the API
-  const batchSize = 20;
-  const initialBatch = objectIds.slice(0, Math.min(batchSize, objectIds.length));
-  const filteredIds = [];
-  
-  for (const objectId of initialBatch) {
+  async searchObjects(query) {
     try {
       await this.checkRateLimits();
       
-      // Get object details
-      const objectDetails = await this.getObjectDetails(objectId);
+      // Prepare search parameters for the Met API
+      const searchParams = {
+        hasImages: true
+      };
       
-      // Skip if object not found or not public domain
-      if (!objectDetails || !objectDetails.isPublicDomain || !objectDetails.primaryImage) {
-        continue;
+      // Always ensure open access (public domain) if specified
+      if (query.isPublicDomain) {
+        searchParams.isPublicDomain = true;
       }
       
-      let matchesFilters = true;
-      
-      // Check classification filter - improved matching
-      if (filters.classification && objectDetails.classification) {
-        const classificationMatch = 
-          objectDetails.classification.toLowerCase() === filters.classification.toLowerCase() ||
-          objectDetails.classification.toLowerCase().includes(filters.classification.toLowerCase());
-        
-        if (!classificationMatch) {
-          matchesFilters = false;
-        }
+      // Add department IDs filter if available
+      if (query.departmentIds && query.departmentIds.length > 0) {
+        searchParams.departmentIds = query.departmentIds.join('|');
       }
       
-      // Check geolocation filter - with special cases
-      if (matchesFilters && filters.geolocation) {
-        const geolocationLower = filters.geolocation.toLowerCase();
-        
-        // Special case for United States
-        if (geolocationLower.includes('united states') || geolocationLower.includes('america')) {
-          // Check multiple fields for American indicators
-          const isAmerican = 
-            (objectDetails.culture || '').toLowerCase().includes('american') ||
-            (objectDetails.country || '').toLowerCase().includes('united states') ||
-            (objectDetails.artistNationality || '').toLowerCase().includes('american');
-          
-          if (!isAmerican) {
-            matchesFilters = false;
-          }
-        } else {
-          // Standard geolocation checks
-          const cultureLower = (objectDetails.culture || '').toLowerCase();
-          const countryLower = (objectDetails.country || '').toLowerCase();
-          const regionLower = (objectDetails.region || '').toLowerCase();
-          
-          const geolocationMatch = 
-            cultureLower.includes(geolocationLower) ||
-            countryLower.includes(geolocationLower) ||
-            regionLower.includes(geolocationLower) ||
-            geolocationLower.includes(cultureLower) ||
-            geolocationLower.includes(countryLower);
-          
-          if (!geolocationMatch) {
-            matchesFilters = false;
-          }
-        }
+      // Add date range filters if available
+      if (query.dateBegin) {
+        searchParams.dateBegin = query.dateBegin;
       }
       
-      // Check material filter - with special handling for "Paintings"
-      if (matchesFilters && filters.material) {
-        const materialLower = filters.material.toLowerCase();
-        
-        // Special case for "Paintings" material
-        if (materialLower === 'paintings') {
-          const isPainting = 
-            objectDetails.classification === 'Paintings' || 
-            (objectDetails.medium || '').toLowerCase().includes('oil') || 
-            (objectDetails.medium || '').toLowerCase().includes('paint') ||
-            (objectDetails.objectName || '').toLowerCase().includes('painting');
-          
-          if (!isPainting) {
-            matchesFilters = false;
-          }
-        } else if (!objectDetails.medium || !objectDetails.medium.toLowerCase().includes(materialLower)) {
-          matchesFilters = false;
-        }
+      if (query.dateEnd) {
+        searchParams.dateEnd = query.dateEnd;
       }
       
-      // If the object passes all filters, add it to the filtered list
-      if (matchesFilters) {
-        filteredIds.push(objectId);
-        console.log(`Match found: Object ${objectId} - ${objectDetails.title}`);
+      // Add keywords for search query
+      if (query.keywords) {
+        searchParams.q = query.keywords;
       } else {
-        console.log(`Object ${objectId} filtered out - doesn't match criteria`);
+        searchParams.q = '*';
       }
+      
+      // Execute the API search
+      console.log('SEARCH PARAMS SENT TO API:', JSON.stringify(searchParams, null, 2));
+      const response = await axios.get(`${this.baseUrl}/search`, { params: searchParams });
+      
+      // Get results
+      const objectIds = response.data.objectIDs || [];
+      console.log(`Found ${objectIds.length} initial results from Met API`);
+      
+      // If we have additional filters that aren't directly supported by the API,
+      // we'll need to apply them to the results
+      if (objectIds.length > 0 && query.filters && (
+          query.filters.classification || 
+          query.filters.geolocation || 
+          query.filters.material)) {
+        
+        return this.postFilterResults(objectIds, query.filters);
+      }
+      
+      return objectIds;
     } catch (error) {
-      console.error(`Error filtering object ${objectId}:`, error.message);
+      this.handleApiError(error, 'searching objects');
+      return [];
     }
   }
   
-  console.log(`Post-filtering complete: Found ${filteredIds.length} matching results from initial batch of ${initialBatch.length}`);
-  return filteredIds;
-}
-   
-    // If we have a good proportion of matches, process more results
-    // Otherwise return what we have from the initial batch
-    if (filteredIds.length > 0 && 
-        filteredIds.length / initialBatch.length > 0.3 && 
-        objectIds.length > batchSize) {
-      
-      // Get more results if initial filtering was successful
-      const remainingIds = objectIds.slice(batchSize);
-      const maxAdditional = Math.min(remainingIds.length, 80); // Limit to 100 total results (20 + 80)
-      
-      console.log(`Getting ${maxAdditional} more results based on initial match rate...`);
-      
-      for (let i = 0; i < maxAdditional; i++) {
-        try {
-          await this.checkRateLimits();
+  async postFilterResults(objectIds, filters) {
+    console.log(`Post-filtering ${objectIds.length} results with filters:`, filters);
+    
+    // Limit initial batch size to avoid overwhelming the API
+    const batchSize = 20;
+    const initialBatch = objectIds.slice(0, Math.min(batchSize, objectIds.length));
+    const filteredIds = [];
+    
+    for (const objectId of initialBatch) {
+      try {
+        await this.checkRateLimits();
+        
+        // Get object details
+        const objectDetails = await this.getObjectDetails(objectId);
+        
+        // Skip if object not found or not public domain
+        if (!objectDetails || !objectDetails.isPublicDomain || !objectDetails.primaryImage) {
+          continue;
+        }
+        
+        let matchesFilters = true;
+        
+        // Check classification filter - improved matching
+        if (filters.classification && objectDetails.classification) {
+          const classificationMatch = 
+            objectDetails.classification.toLowerCase() === filters.classification.toLowerCase() ||
+            objectDetails.classification.toLowerCase().includes(filters.classification.toLowerCase());
           
-          const objectId = remainingIds[i];
-          const objectDetails = await this.getObjectDetails(objectId);
-          
-          // Skip if object not found or not public domain
-          if (!objectDetails || !objectDetails.isPublicDomain || !objectDetails.primaryImage) {
-            continue;
+          if (!classificationMatch) {
+            matchesFilters = false;
           }
+        }
+        
+        // Check geolocation filter - with special cases
+        if (matchesFilters && filters.geolocation) {
+          const geolocationLower = filters.geolocation.toLowerCase();
           
-          let matchesFilters = true;
-          
-          // Apply the same filters as before
-          if (filters.classification && objectDetails.classification) {
-            const classificationMatch = objectDetails.classification.toLowerCase()
-              .includes(filters.classification.toLowerCase());
+          // Special case for United States
+          if (geolocationLower.includes('united states') || geolocationLower.includes('america')) {
+            // Check multiple fields for American indicators
+            const isAmerican = 
+              (objectDetails.culture || '').toLowerCase().includes('american') ||
+              (objectDetails.country || '').toLowerCase().includes('united states') ||
+              (objectDetails.artistNationality || '').toLowerCase().includes('american');
             
-            if (!classificationMatch) {
+            if (!isAmerican) {
               matchesFilters = false;
             }
-          }
-          
-          if (matchesFilters && filters.geolocation && 
-              (objectDetails.culture || objectDetails.country || objectDetails.region)) {
-            
-            const geolocationLower = filters.geolocation.toLowerCase();
+          } else {
+            // Standard geolocation checks
             const cultureLower = (objectDetails.culture || '').toLowerCase();
             const countryLower = (objectDetails.country || '').toLowerCase();
             const regionLower = (objectDetails.region || '').toLowerCase();
@@ -254,35 +160,41 @@ async searchObjects(query) {
               matchesFilters = false;
             }
           }
+        }
+        
+        // Check material filter - with special handling for "Paintings"
+        if (matchesFilters && filters.material) {
+          const materialLower = filters.material.toLowerCase();
           
-          if (matchesFilters && filters.material && objectDetails.medium) {
-            const materialLower = filters.material.toLowerCase();
-            const mediumLower = objectDetails.medium.toLowerCase();
+          // Special case for "Paintings" material
+          if (materialLower === 'paintings') {
+            const isPainting = 
+              objectDetails.classification === 'Paintings' || 
+              (objectDetails.medium || '').toLowerCase().includes('oil') || 
+              (objectDetails.medium || '').toLowerCase().includes('paint') ||
+              (objectDetails.objectName || '').toLowerCase().includes('painting');
             
-            if (materialLower === 'paintings') {
-              if (!(objectDetails.classification === 'Paintings' || 
-                   mediumLower.includes('oil') || 
-                   mediumLower.includes('acrylic') || 
-                   mediumLower.includes('tempera') ||
-                   mediumLower.includes('paint'))) {
-                matchesFilters = false;
-              }
-            } else if (!mediumLower.includes(materialLower)) {
+            if (!isPainting) {
               matchesFilters = false;
             }
+          } else if (!objectDetails.medium || !objectDetails.medium.toLowerCase().includes(materialLower)) {
+            matchesFilters = false;
           }
-          
-          if (matchesFilters) {
-            filteredIds.push(objectId);
-          }
-        } catch (error) {
-          console.error(`Error filtering additional object:`, error.message);
         }
+        
+        // If the object passes all filters, add it to the filtered list
+        if (matchesFilters) {
+          filteredIds.push(objectId);
+          console.log(`Match found: Object ${objectId} - ${objectDetails.title}`);
+        } else {
+          console.log(`Object ${objectId} filtered out - doesn't match criteria`);
+        }
+      } catch (error) {
+        console.error(`Error filtering object ${objectId}:`, error.message);
       }
-      
-      console.log(`Additional filtering complete. Found total of ${filteredIds.length} matching results`);
     }
     
+    console.log(`Post-filtering complete: Found ${filteredIds.length} matching results from initial batch of ${initialBatch.length}`);
     return filteredIds;
   }
   
@@ -485,9 +397,8 @@ async searchObjects(query) {
         return null;
       }
       
-      // Generate descriptions
-      const { rawDescription, shortDescription, expandedDescription } = 
-        await this.openai.generateDescriptions(artwork);
+      // Generate description
+      const description = await this.openai.generateDescription(artwork);
       
       // Determine the year
       const year = parseInt(artwork.objectBeginDate);
@@ -508,9 +419,7 @@ async searchObjects(query) {
         artist: artwork.artistDisplayName || 'Unknown Artist',
         date: artwork.objectDate || 'Unknown',
         imageUrl: artwork.primaryImage,
-        rawDescription,
-        shortDescription,
-        expandedDescription,
+        description,
         collections: allCollections,
         tags,
         year
@@ -521,8 +430,7 @@ async searchObjects(query) {
         try {
           const productId = await this.shopify.uploadArtwork(
             artwork,
-            shortDescription,
-            expandedDescription,
+            description,
             imagePath,
             allCollections,
             tags,
@@ -564,8 +472,10 @@ async searchObjects(query) {
       // The request was made but no response was received
       console.error(`No response received while ${action}: ${error.message}`);
     } else {
-      console.error(`Error with OpenAI request: ${error.message}`);
+      // Something happened in setting up the request that triggered an Error
+      console.error(`Error setting up request while ${action}: ${error.message}`);
     }
   }
 }
+
 module.exports = MetService;
