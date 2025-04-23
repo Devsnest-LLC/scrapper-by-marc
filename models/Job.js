@@ -1,4 +1,4 @@
-// models/Job.js - Updated MongoDB model for import jobs
+// models/Job.js - Updated Job model with multiple descriptions support
 const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
@@ -69,9 +69,16 @@ const JobSchema = new mongoose.Schema({
     date: String,
     imageUrl: String,
     shopifyProductId: String,
+    department: String,
+    
+    // Description fields
+    description: String, // Legacy field (kept for backward compatibility)
+    rawDescription: String, // Original Met Museum description
+    shortDescription: String, // 5-sentence description
+    expandedDescription: String, // 2-4 paragraph description
+    
     collections: [String],
     tags: [String],
-    description: String,
     processed: { type: Boolean, default: false },
     error: String
   }],
