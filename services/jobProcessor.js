@@ -95,11 +95,10 @@ class JobProcessor {
   }
   
   async initializeJob(job) {
-    try {
-      console.log(`Initializing job ${job._id}: ${job.name}`);
-      // Use 'processing' instead of 'initializing' to avoid enum validation error
-      job.status = 'processing'; 
-      await job.save();
+  try {
+    console.log(`Initializing job ${job._id}: ${job.name}`);
+    job.status = 'processing';
+    await job.save();
       
       let objectIds = [];
       
