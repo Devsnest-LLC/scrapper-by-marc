@@ -37,37 +37,33 @@ class MetService {
   
   async searchObjects(query) {
     try {
+       console.log('SEARCH QUERY RECEIVED:', JSON.stringify(query, null, 2));
       await this.checkRateLimits();
       
-      // Prepare search parameters for the Met API
-      const searchParams = {
-        hasImages: true
-      };
+     // Simplify search parameters - focus on essential filters only
+const searchParams = {
+  hasImages: true,
+  isPublicDomain: true // Always ensure open access
+};
+
+// Add date parameters if available
+if (query.dateBegin) {
+  searchParams.dateBegin = query.dateBegin;
+  console.log(`Adding date range: ${query.dateBegin} to ${query.dateEnd || 'present'}`);
+}
+
+if (query.dateEnd) {
+  searchParams.dateEnd = query.dateEnd;
+}
+
+// Keep it simple, just search for "*" to get all matching items
+searchParams.q = "*";
+
+console.log('SIMPLIFIED SEARCH PARAMS FOR API:', JSON.stringify(searchParams, null, 2));
       
       // Always ensure open access (public domain) if specified
       if (query.isPublicDomain) {
         searchParams.isPublicDomain = true;
-      }
-      
-      // Add department IDs filter if available
-      if (query.departmentIds && query.departmentIds.length > 0) {
-        searchParams.departmentIds = query.departmentIds.join('|');
-      }
-      
-      // Add date range filters if available
-      if (query.dateBegin) {
-        searchParams.dateBegin = query.dateBegin;
-      }
-      
-      if (query.dateEnd) {
-        searchParams.dateEnd = query.dateEnd;
-      }
-      
-      // Add keywords for search query
-      if (query.keywords) {
-        searchParams.q = query.keywords;
-      } else {
-        searchParams.q = '*';
       }
       
       // Execute the API search
