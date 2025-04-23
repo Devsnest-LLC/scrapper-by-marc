@@ -1,12 +1,16 @@
-// routes/jobRoutes.js - API routes for job management
+// routes/jobRoutes.js - Updated with bulk image download support
 const express = require('express');
 const router = express.Router();
 const Job = require('../models/Job');
 const MetService = require('../services/metService');
+const ImageDownloader = require('../services/imageDownloader');
 const parseMetUrl = require('../utils/metUrlParser');
 const { createObjectCsvStringifier } = require('csv-writer');
 const fs = require('fs');
 const path = require('path');
+
+// Initialize services
+const imageDownloader = new ImageDownloader();
 
 // Get all jobs
 router.get('/', async (req, res) => {
@@ -50,6 +54,7 @@ router.post('/url', async (req, res) => {
     // Parse the Met Museum URL
     const query = parseMetUrl(url);
     
+    // Create a new job
     const job = new Job({
       name: name || `URL Import: ${new Date().toLocaleString()}`,
       source: 'url',
@@ -70,16 +75,30 @@ router.post('/url', async (req, res) => {
 // Create a new job from categories
 router.post('/category', async (req, res) => {
   try {
-    const { artworkTypes, timePeriods, keywords, name, options } = req.body;
+    const { 
+      artworkTypes, 
+      timePeriods, 
+      departmentIds, 
+      keywords, 
+      isPublicDomain,
+      name, 
+      options 
+    } = req.body;
     
+    // Build the query object
+    const query = {
+      artworkTypes: artworkTypes || [],
+      timePeriods: timePeriods || [],
+      departmentIds: departmentIds || [],
+      keywords: keywords || '',
+      isPublicDomain: isPublicDomain !== undefined ? isPublicDomain : true
+    };
+    
+    // Create a new job
     const job = new Job({
       name: name || `Category Import: ${new Date().toLocaleString()}`,
       source: 'category',
-      query: {
-        artworkTypes: artworkTypes || [],
-        timePeriods: timePeriods || [],
-        keywords: keywords || ''
-      },
+      query,
       options: options || {}
     });
     
@@ -161,12 +180,14 @@ router.get('/:id/csv', async (req, res) => {
       return res.status(400).json({ message: 'No results to export' });
     }
     
-    // Create CSV headers
+    // Create CSV headers with description columns
     const csvStringifier = createObjectCsvStringifier({
       header: [
         { id: 'Handle', title: 'Handle' },
         { id: 'Title', title: 'Title' },
-        { id: 'Body', title: 'Body (HTML)' },
+        { id: 'ShortDescription', title: 'Short Description (HTML)' },
+        { id: 'RawDescription', title: 'Raw Description (HTML)' },
+        { id: 'ExpandedDescription', title: 'Expanded Description (HTML)' },
         { id: 'Vendor', title: 'Vendor' },
         { id: 'Type', title: 'Type' },
         { id: 'Tags', title: 'Tags' },
@@ -181,7 +202,9 @@ router.get('/:id/csv', async (req, res) => {
         { id: 'Variant Taxable', title: 'Variant Taxable' },
         { id: 'Image Src', title: 'Image Src' },
         { id: 'Image Alt Text', title: 'Image Alt Text' },
-        { id: 'Collection', title: 'Collection' }
+        { id: 'Collection', title: 'Collection' },
+        { id: 'Year', title: 'Year' },
+        { id: 'Department', title: 'Department' }
       ]
     });
     
@@ -191,7 +214,9 @@ router.get('/:id/csv', async (req, res) => {
       .map(result => ({
         Handle: result.title.toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, '-').substring(0, 100),
         Title: result.title,
-        Body: result.description,
+        ShortDescription: result.shortDescription || result.description,
+        RawDescription: result.rawDescription || '',
+        ExpandedDescription: result.expandedDescription || '',
         Vendor: result.artist,
         Type: 'Artwork',
         Tags: result.tags.join(', '),
@@ -206,7 +231,9 @@ router.get('/:id/csv', async (req, res) => {
         'Variant Taxable': 'TRUE',
         'Image Src': result.imageUrl,
         'Image Alt Text': result.title,
-        Collection: result.collections.join(', ')
+        Collection: result.collections.join(', '),
+        Year: result.date || '',
+        Department: result.department || ''
       }));
     
     // Generate CSV
@@ -219,6 +246,51 @@ router.get('/:id/csv', async (req, res) => {
     // Send CSV
     res.send(csvString);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// NEW ENDPOINT: Download all images for a job as a ZIP file
+router.get('/:id/images', async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    if (job.status !== 'completed') {
+      return res.status(400).json({ message: 'Job must be completed before downloading images' });
+    }
+    
+    if (job.results.length === 0 || job.results.filter(r => r.processed && !r.error).length === 0) {
+      return res.status(400).json({ message: 'No processed artwork to download' });
+    }
+    
+    // Create the zip file
+    const zipPath = await imageDownloader.createJobImagesZip(job);
+    
+    if (!zipPath) {
+      return res.status(500).json({ message: 'Failed to create images archive' });
+    }
+    
+    // Get the filename from the path
+    const filename = path.basename(zipPath);
+    
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    // Create a read stream and pipe it to the response
+    const fileStream = fs.createReadStream(zipPath);
+    fileStream.pipe(res);
+    
+    // Delete the zip file after sending
+    fileStream.on('close', () => {
+      // Optional: Delete the zip file after sending to save space
+      // fs.unlinkSync(zipPath);
+    });
+  } catch (error) {
+    console.error('Error downloading images:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -264,11 +336,12 @@ router.post('/:id/upload', async (req, res) => {
 // Delete a job
 router.delete('/:id', async (req, res) => {
   try {
-    const job = await Job.findByIdAndDelete(req.params.id);
+    const job = await Job.findById(req.params.id);
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
     
+    await job.remove();
     res.json({ message: 'Job deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
