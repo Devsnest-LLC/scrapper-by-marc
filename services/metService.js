@@ -37,17 +37,18 @@ class MetService {
   
  async searchObjects(query) {
   try {
-    await this.checkRateLimits();
+    // ADD THIS LINE - beginning of function
+    console.log('SEARCH QUERY RECEIVED:', JSON.stringify(query, null, 2));
     
-    console.log('Starting search with query:', JSON.stringify(query));
+    await this.checkRateLimits();
     
     // Very simple search parameters - just search for open access items
     const searchParams = {
       hasImages: true,
-      isPublicDomain: true
+      isPublicDomain: true  // Always ensure open access
     };
     
-    // Add basic date range if available
+    // Add date range if available
     if (query.dateBegin) {
       searchParams.dateBegin = query.dateBegin;
     }
@@ -56,11 +57,11 @@ class MetService {
       searchParams.dateEnd = query.dateEnd;
     }
     
-    // Use a simple search term
+    // Simple search term
     searchParams.q = "*";
     
-    console.log('Using simplified search params:', searchParams);
-    
+    // ADD THIS LINE - right after creating searchParams
+    console.log('SIMPLIFIED SEARCH PARAMS FOR API:', JSON.stringify(searchParams, null, 2));
     // Add timeout to API call to prevent hanging
     const response = await axios.get(`${this.baseUrl}/search`, { 
       params: searchParams,
