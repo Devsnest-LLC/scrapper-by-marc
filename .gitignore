@@ -1,0 +1,11 @@
+node_modules
+.env
+client/node_modules
+client/dist
+client/dist/*
+client/build
+client/build/*
+client/public/build
+client/public/build/*
+client/public/build/*/*
+client/public/build/*/*/*

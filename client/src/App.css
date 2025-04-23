@@ -1,0 +1,139 @@
+/* App.css - Main application styles */
+
+/* General styles */
+body {
+  background-color: #f8f9fa;
+}
+
+/* Header styles */
+.app-header {
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.app-logo {
+  font-weight: bold;
+  color: #495057;
+}
+
+/* Card styles */
+.card {
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+}
+
+.card-header {
+  background-color: rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+/* Job list styles */
+.job-card {
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.job-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Status badges */
+.badge-pending {
+  background-color: #6c757d;
+}
+
+.badge-processing {
+  background-color: #007bff;
+}
+
+.badge-paused {
+  background-color: #fd7e14;
+}
+
+.badge-completed {
+  background-color: #28a745;
+}
+
+.badge-failed {
+  background-color: #dc3545;
+}
+
+/* Progress bar */
+.progress {
+  height: 0.8rem;
+  border-radius: 0.5rem;
+}
+
+/* Rate limit alert */
+.rate-limit-alert {
+  background-color: #fff3cd;
+  color: #856404;
+  border-color: #ffeeba;
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+}
+
+/* Artwork preview */
+.artwork-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.artwork-item {
+  width: 180px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.artwork-item img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.artwork-info {
+  padding: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.artwork-title {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tab navigation */
+.nav-tabs .nav-link.active {
+  font-weight: 600;
+}
+
+/* Form elements */
+.form-card {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Settings page */
+.settings-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
