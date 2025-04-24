@@ -81,35 +81,6 @@ class MetService {
   }
 }
       
-      // Execute the API search
-      console.log('SEARCH PARAMS SENT TO API:', JSON.stringify(searchParams, null, 2));
-      const response = await axios.get(`${this.baseUrl}/search`, { params: searchParams });
-     
-      // Add this logging to see raw API response
-console.log(`API RESPONSE STATUS: ${response.status}`);
-console.log(`API RESPONSE TOTAL OBJECTS: ${response.data.total || 0}`);
-console.log(`API RESPONSE OBJECT IDs COUNT: ${(response.data.objectIDs || []).length}`);
-      
-      // Get results
-      const objectIds = response.data.objectIDs || [];
-      console.log(`Found ${objectIds.length} initial results from Met API`);
-      
-      // If we have additional filters that aren't directly supported by the API,
-      // we'll need to apply them to the results
-      if (objectIds.length > 0 && query.filters && (
-          query.filters.classification || 
-          query.filters.geolocation || 
-          query.filters.material)) {
-        
-        return this.postFilterResults(objectIds, query.filters);
-      }
-      
-      return objectIds;
-    } catch (error) {
-      this.handleApiError(error, 'searching objects');
-      return [];
-    }
-  }
   
   async postFilterResults(objectIds, filters) {
     console.log(`Post-filtering ${objectIds.length} results with filters:`, filters);
