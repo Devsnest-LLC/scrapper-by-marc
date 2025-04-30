@@ -10,9 +10,10 @@ const writeFileAsync = promisify(fs.writeFile);
 const mkdirAsync = promisify(fs.mkdir);
 const existsAsync = promisify(fs.exists);
 
+
 class ImageDownloader {
   constructor() {
-    this.baseDir = path.join(__dirname, '../../data');
+    this.baseDir = path.join(__dirname, '../data');
     this.imagesDir = path.join(this.baseDir, 'images');
     this.jobImagesDir = path.join(this.baseDir, 'job_images');
     

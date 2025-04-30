@@ -18,33 +18,33 @@ const JobSchema = new mongoose.Schema({
     required: true
   },
   query: {
-    // For URL source
+    // URL source
     url: String,
     
-    // Common query parameters
+    // Met API query parameters
+    q: String,
+    showOnly: String,
+    artist: String,
+    material: String,
+    era: String,
+    geolocation: String,
+    department: String,
+    pkgIds: String,
+    exhibitionId: String,
+    feature: String,
+    searchField: String,
+    
+    // Legacy fields for backward compatibility
     departmentIds: [Number],
     hasImages: { type: Boolean, default: true },
     isOnView: { type: Boolean, default: false },
     isHighlight: { type: Boolean, default: false },
     isPublicDomain: { type: Boolean, default: true },
-    
-    // For category source
     artworkTypes: [String],
     timePeriods: [String],
     keywords: String,
-    
-    // Date range
     dateBegin: Number,
-    dateEnd: Number,
-    
-    // Additional filters
-    filters: {
-      era: String,
-      geolocation: String,
-      material: String,
-      classification: String,
-      additionalKeywords: [String]
-    }
+    dateEnd: Number
   },
   options: {
     maxItems: { type: Number, default: 100 },

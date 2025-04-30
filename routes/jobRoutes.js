@@ -53,7 +53,7 @@ router.post('/url', async (req, res) => {
     
     // Parse the Met Museum URL
     const query = parseMetUrl(url);
-    
+    console.log("SAving With Query", query)
     // Create a new job
     const job = new Job({
       name: name || `URL Import: ${new Date().toLocaleString()}`,
@@ -65,10 +65,12 @@ router.post('/url', async (req, res) => {
       options: options || {}
     });
     
+    // Save the job
     await job.save();
     res.status(201).json(job);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Error creating job from URL:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -336,12 +338,12 @@ router.post('/:id/upload', async (req, res) => {
 // Delete a job
 router.delete('/:id', async (req, res) => {
   try {
-    const job = await Job.findById(req.params.id);
+    const job = await Job.findByIdAndDelete(req.params.id);
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
     
-    await job.remove();
+    
     res.json({ message: 'Job deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });

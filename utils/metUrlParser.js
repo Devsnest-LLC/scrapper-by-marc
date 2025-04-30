@@ -1,174 +1,82 @@
-// utils/metUrlParser.js - Improved utility to parse Met Museum search URLs
+// utils/metUrlParser.js - Utility to parse Met Museum search URLs
 function parseMetUrl(url) {
   try {
     // Create URL object to parse parameters
     const parsedUrl = new URL(url);
     const params = parsedUrl.searchParams;
-    
-    // Initialize the query object with default values
+    console.log("params", params);
+    // Initialize the query object with all required fields
     const query = {
-      // Default parameters
-      hasImages: true,
-      isOnView: params.has('isOnView') ? params.get('isOnView') === 'true' : false,
-      isHighlight: params.has('isHighlight') ? params.get('isHighlight') === 'true' : false,
-      isPublicDomain: params.has('showOnly') && params.get('showOnly').includes('openAccess'),
-      departmentIds: [],
-      
-      // Additional filters for post-processing (not direct API parameters)
-      filters: {
-        era: null,
-        geolocation: null,
-        material: null,
-        classification: null,
-        additionalKeywords: []
-      }
+      q: params.get('q') || '',
+      showOnly: params.get('showOnly') || null,
+      artist: null,
+      material: null,
+      era: null,
+      geolocation: params.get('geolocation') || null,
+      department: null,
+      pkgIds: null,
+      exhibitionId: null,
+      feature: null,
+      searchField: null,
     };
-    
-    console.log("Processing URL parameters:", url);
-    
-    // Department mapping
+
+    // Process showOnly parameter
+    if (params.has('showOnly')) {
+      const showOnlyValue = params.get('showOnly');
+      if (showOnlyValue) {
+        query.showOnly = showOnlyValue;
+      }
+    }
+
+    // Process department if present
     if (params.has('department')) {
-      const deptValue = params.get('department');
-      const departmentIds = deptValue.split('|').map(id => parseInt(id));
-      query.departmentIds = departmentIds.filter(id => !isNaN(id));
+      query.department = params.get('department');
     }
-    
-    // Map era parameter to date ranges and keywords
+
+    // Process date/era if present
     if (params.has('era')) {
-      const era = params.get('era');
-      query.filters.era = era;
-      console.log("Found era parameter:", era);
-      
-      // Map common era values to date ranges and keywords
-      if (era.toLowerCase().includes('1900-present') || 
-          era.toLowerCase().includes('a.d. 1900') || 
-          era.toLowerCase().includes('modern')) {
-        console.log("Detected modern era (1900-present)");
-        query.dateBegin = 1900;
-        // Don't set dateEnd to include everything up to present
-        query.filters.additionalKeywords.push('modern', '20th century', 'contemporary');
-      }
-      else if (era.toLowerCase().includes('19th century') || era.toLowerCase().includes('1800-1900')) {
-        query.dateBegin = 1800;
-        query.dateEnd = 1899;
-        query.filters.additionalKeywords.push('19th century');
-      }
-      else if (era.toLowerCase().includes('18th century') || era.toLowerCase().includes('1700-1800')) {
-        query.dateBegin = 1700;
-        query.dateEnd = 1799;
-        query.filters.additionalKeywords.push('18th century');
-      }
-      else if (era.toLowerCase().includes('17th century') || era.toLowerCase().includes('1600-1700')) {
-        query.dateBegin = 1600;
-        query.dateEnd = 1699;
-        query.filters.additionalKeywords.push('17th century');
-      }
-      else if (era.toLowerCase().includes('16th century') || era.toLowerCase().includes('1500-1600')) {
-        query.dateBegin = 1500;
-        query.dateEnd = 1599;
-        query.filters.additionalKeywords.push('16th century', 'renaissance');
-      }
-      else if (era.toLowerCase().includes('medieval') || era.toLowerCase().includes('middle ages')) {
-        query.dateBegin = 500;
-        query.dateEnd = 1499;
-        query.filters.additionalKeywords.push('medieval', 'middle ages');
-      }
-      else if (era.toLowerCase().includes('ancient')) {
-        query.dateEnd = 499;
-        query.filters.additionalKeywords.push('ancient');
-      }
-      else {
-        // Try to extract years from custom era strings
-        const yearPattern = /(\d{1,4})[-–](\d{1,4}|\s?present)/i;
-        const match = era.match(yearPattern);
-        if (match) {
-          const startYear = parseInt(match[1]);
-          const endYear = match[2].toLowerCase() === 'present' ? new Date().getFullYear() : parseInt(match[2]);
-          if (!isNaN(startYear)) {
-            query.dateBegin = startYear;
-          }
-          if (!isNaN(endYear)) {
-            query.dateEnd = endYear;
-          }
-        }
-        // Always add the era as a keyword
-        query.filters.additionalKeywords.push(era.toLowerCase());
-      }
+      query.era = params.get('era');
     }
-    
-    // Map geolocation to culture/region keywords
-    if (params.has('geolocation')) {
-      const geolocation = params.get('geolocation');
-      query.filters.geolocation = geolocation;
-      console.log("Found geolocation parameter:", geolocation);
-      
-      // Add geolocation as search keywords for API query
-      query.filters.additionalKeywords.push(geolocation.toLowerCase());
-      
-      // Special handling for common locations
-      if (geolocation.toLowerCase() === 'united states' || geolocation.toLowerCase().includes('america')) {
-        query.filters.additionalKeywords.push('american', 'usa', 'u.s.a');
-      }
-    }
-    
-    // Map material to medium and classification
+
+    // Process material if present
     if (params.has('material')) {
-      const material = params.get('material');
-      query.filters.material = material;
-      console.log("Found material parameter:", material);
-      
-      // Add material as search keywords for API query
-      query.filters.additionalKeywords.push(material.toLowerCase());
-      
-      // Special handling for common materials that map to classifications
-      if (material.toLowerCase() === 'paintings' || 
-          material.toLowerCase().includes('paint') ||
-          material.toLowerCase().includes('oil')) {
-        query.filters.classification = 'Paintings';
-      }
+      query.material = params.get('material');
     }
-    
-    // Map various search parameters to keywords
-    const keywordSources = [];
-    
-    // Direct search term
-    if (params.has('q') && params.get('q') !== '*') {
-      keywordSources.push(params.get('q'));
+
+    // Process artist if present
+    if (params.has('artist')) {
+      query.artist = params.get('artist');
     }
-    
-    // Artist/culture
-    if (params.has('artist') || params.has('culture')) {
-      const artist = params.get('artist') || '';
-      const culture = params.get('culture') || '';
-      if (artist) keywordSources.push(artist);
-      if (culture) keywordSources.push(culture);
+
+    // Process search field if present
+    if (params.has('searchField')) {
+      query.searchField = params.get('searchField');
     }
-    
-    // Combine all keywords including those from filters
-    const allKeywords = [
-      ...keywordSources,
-      ...query.filters.additionalKeywords
-    ].filter(Boolean);
-    
-    if (allKeywords.length > 0) {
-      query.keywords = allKeywords.join(' ');
-    } else if (!params.has('q') || params.get('q') === '*') {
-      // If no specific keywords and no search term, use '*' to get all results
-      query.keywords = '*';
+
+    // Process sorting parameters if present
+    if (params.has('sortBy')) {
+      query.sortBy = params.get('sortBy');
     }
-    
-    console.log("FINAL PARSED URL PARAMETERS:", JSON.stringify(query, null, 2));
+    if (params.has('sortOrder')) {
+      query.sortOrder = params.get('sortOrder');
+    }
+
+    // Process pagination parameters if present
+    if (params.has('page')) {
+      query.page = parseInt(params.get('page')) || 1;
+    }
+    if (params.has('perPage')) {
+      query.perPage = parseInt(params.get('perPage')) || 40;
+    }
+    if (params.has('offset')) {
+      query.offset = parseInt(params.get('offset')) || 0;
+    }
+
+    console.log("Parsed query:", query);
     return query;
   } catch (error) {
-    console.error('Error parsing Met Museum URL:', error);
-    // Return default query parameters
-    return {
-      hasImages: true,
-      isOnView: false,
-      isHighlight: false,
-      isPublicDomain: true,
-      keywords: '*'
-    };
+    console.error("Error parsing URL:", error);
+    throw new Error("Invalid URL format");
   }
 }
 

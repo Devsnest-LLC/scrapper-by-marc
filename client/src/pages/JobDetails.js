@@ -111,24 +111,53 @@ const JobDetails = () => {
   };
   
   // Handle download images
-  const handleDownloadImages = () => {
+  const handleDownloadImages = async () => {
     setImageDownloading(true);
     try {
-      // Create a download link and trigger it
+      const response = await axios.get(`/api/jobs/${id}/images`, {
+        responseType: 'blob'
+      });
+      
+      // Create a blob URL for the downloaded file
+      const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
-      link.href = `/api/jobs/${id}/images`;
-      link.download = `images-${id}.zip`;
+      link.href = url;
+      link.setAttribute('download', `images-${id}.zip`);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      
+      // Cleanup
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       setError('Failed to download images. Please try again.');
       console.error('Error downloading images:', err);
     } finally {
-      // Set a timeout to reset the downloading state after a reasonable time
-      setTimeout(() => {
-        setImageDownloading(false);
-      }, 3000);
+      setImageDownloading(false);
+    }
+  };
+  
+  // Handle download CSV
+  const handleDownloadCSV = async () => {
+    try {
+      const response = await axios.get(`/api/jobs/${id}/csv`, {
+        responseType: 'blob'
+      });
+      
+      // Create a blob URL for the downloaded file
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `met-import-${id}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Failed to download CSV. Please try again.');
+      console.error('Error downloading CSV:', err);
     }
   };
   
@@ -247,11 +276,12 @@ const JobDetails = () => {
             
             {job.status === 'completed' && (
               <>
-                <a href={`/api/jobs/${job._id}/csv`} download>
-                  <Button variant="primary">
-                    <FaDownload className="me-1" /> Download CSV
-                  </Button>
-                </a>
+                <Button 
+                  variant="primary"
+                  onClick={handleDownloadCSV}
+                >
+                  <FaDownload className="me-1" /> Download CSV
+                </Button>
                 
                 <Button
                   variant="info"
