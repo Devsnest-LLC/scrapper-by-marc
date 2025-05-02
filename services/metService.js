@@ -53,7 +53,8 @@ class MetService {
         pkgIds: query.pkgIds || null,
         exhibitionId: query.exhibitionId || null,
         feature: query.feature || null,
-        searchField: query.searchField || null
+        searchField: query.searchField || null,
+        perPage:100
       };
       
       // Remove null values
@@ -269,11 +270,13 @@ class MetService {
       const artwork = await this.getObjectDetails(objectId);
       
       if (!artwork) {
+        console.warn(`Artwork details not found for objectId: ${objectId}`);
         return null;
       }
       
       // Check if it's public domain and has an image
       if (!artwork.isPublicDomain || !artwork.primaryImage) {
+        console.warn(`Artwork ${objectId} skipped: Not public domain or missing image.`);
         return null;
       }
       
@@ -281,6 +284,7 @@ class MetService {
       const imagePath = await this.downloadImage(artwork.primaryImage, objectId);
       
       if (!imagePath) {
+        console.warn(`Image download failed for objectId: ${objectId}`);
         return null;
       }
       

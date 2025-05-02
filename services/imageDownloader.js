@@ -10,27 +10,25 @@ const writeFileAsync = promisify(fs.writeFile);
 const mkdirAsync = promisify(fs.mkdir);
 const existsAsync = promisify(fs.exists);
 
-
 class ImageDownloader {
   constructor() {
     this.baseDir = path.join(__dirname, '../data');
     this.imagesDir = path.join(this.baseDir, 'images');
     this.jobImagesDir = path.join(this.baseDir, 'job_images');
-    
-    // Ensure directories exist
+
     this.ensureDirectories();
   }
-  
+
   async ensureDirectories() {
     try {
       if (!fs.existsSync(this.baseDir)) {
         await mkdirAsync(this.baseDir, { recursive: true });
       }
-      
+
       if (!fs.existsSync(this.imagesDir)) {
         await mkdirAsync(this.imagesDir, { recursive: true });
       }
-      
+
       if (!fs.existsSync(this.jobImagesDir)) {
         await mkdirAsync(this.jobImagesDir, { recursive: true });
       }
@@ -38,7 +36,7 @@ class ImageDownloader {
       console.error('Error creating directories:', error);
     }
   }
-  
+
   /**
    * Download an individual image for processing
    * @param {string} imageUrl - URL of the image to download
@@ -48,20 +46,17 @@ class ImageDownloader {
   async downloadImage(imageUrl, objectId) {
     try {
       const imagePath = path.join(this.imagesDir, `${objectId}.jpg`);
-      
-      // Skip download if image already exists
+
       if (await existsAsync(imagePath)) {
         return imagePath;
       }
-      
-      // Download the image
+
       const response = await axios({
         method: 'GET',
         url: imageUrl,
         responseType: 'arraybuffer'
       });
-      
-      // Save the image
+
       await writeFileAsync(imagePath, response.data);
       return imagePath;
     } catch (error) {
@@ -69,7 +64,7 @@ class ImageDownloader {
       return null;
     }
   }
-  
+
   /**
    * Process images for a job, creating appropriately named copies
    * @param {Object} job - The job object
@@ -77,40 +72,43 @@ class ImageDownloader {
    */
   async processJobImages(job) {
     try {
-      // Create a job-specific directory
       const jobDir = path.join(this.jobImagesDir, job._id.toString());
       if (!fs.existsSync(jobDir)) {
         await mkdirAsync(jobDir, { recursive: true });
       }
-      
-      // Process each result with an image
+
       const results = job.results.filter(result => result.processed && !result.error && result.imageUrl);
-      
+      console.log(`Processing ${results.length} images for job ${job._id}`);
+
       for (const result of results) {
         try {
-          // Download the image if needed
           const sourceImagePath = await this.downloadImage(result.imageUrl, result.objectId);
-          
+
           if (sourceImagePath) {
-            // Create sanitized filename from artwork title
             const sanitizedTitle = sanitize(result.title).replace(/\s+/g, '_');
-            const targetImagePath = path.join(jobDir, `${sanitizedTitle}.jpg`);
-            
-            // Copy the image with the new name
+            const targetImagePath = path.join(jobDir, `${sanitizedTitle}_${result.objectId}.jpg`);
+            console.log(`Copying image for ${result.title} to ${targetImagePath}`);
             fs.copyFileSync(sourceImagePath, targetImagePath);
+          } else {
+            console.warn(`Image for object ${result.objectId} could not be downloaded.`);
           }
         } catch (error) {
           console.error(`Error processing image for ${result.title}:`, error.message);
         }
       }
-      
+
+      if (fs.readdirSync(jobDir).length === 0) {
+        console.error(`No images processed for job ${job._id}`);
+        return null;
+      }
+
       return jobDir;
     } catch (error) {
       console.error(`Error processing job images:`, error.message);
       return null;
     }
   }
-  
+
   /**
    * Create a zip archive of all the job's images
    * @param {Object} job - The job object
@@ -118,38 +116,50 @@ class ImageDownloader {
    */
   async createJobImagesZip(job) {
     try {
-      // First ensure all images are processed
       const jobDir = await this.processJobImages(job);
-      if (!jobDir) {
-        throw new Error('Failed to process job images');
+      if (!jobDir || fs.readdirSync(jobDir).length === 0) {
+        throw new Error('No images to zip');
       }
-      
-      // Create zip file
+
       const zipPath = path.join(this.baseDir, `job_images_${job._id}.zip`);
       const output = fs.createWriteStream(zipPath);
-      const archive = archiver('zip', {
-        zlib: { level: 5 } // Compression level
-      });
-      
-      // Set up archive
+      const archive = archiver('zip', { zlib: { level: 5 } });
+
       archive.pipe(output);
-      
-      // Add directory contents to the zip
       archive.directory(jobDir, false);
-      
-      // Finalize archive
+
       await archive.finalize();
-      
-      // Return promise that resolves when zip is complete
+
       return new Promise((resolve, reject) => {
-        output.on('close', () => resolve(zipPath));
-        output.on('error', (err) => reject(err));
+        output.on('close', () => {
+          console.log(`ZIP created at ${zipPath} (${archive.pointer()} total bytes)`);
+
+          // ✅ Clean up original downloaded images after successful ZIP
+          fs.rm(this.imagesDir, { recursive: true, force: true }, async (err) => {
+            if (err) {
+              console.error('Error deleting original image dir:', err.message);
+            } else {
+              await mkdirAsync(this.imagesDir, { recursive: true }); // recreate empty images dir
+              console.log('Cleaned up original image downloads.');
+            }
+          });
+
+          resolve(zipPath);
+        });
+
+        output.on('error', (err) => {
+          console.error('Error during ZIP creation:', err.message);
+          reject(err);
+        });
       });
     } catch (error) {
       console.error(`Error creating images zip for job ${job._id}:`, error.message);
       return null;
     }
   }
+
+  
+  
 }
 
 module.exports = ImageDownloader;
